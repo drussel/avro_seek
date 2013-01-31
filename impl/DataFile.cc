@@ -151,7 +151,8 @@ void DataFileWriterBase::setMetadata(const string& key, const string& value)
 
 DataFileReaderBase::DataFileReaderBase(const char* filename) :
     filename_(filename), stream_(fileInputStream(filename)),
-    decoder_(binaryDecoder()), objectCount_(0), eof_(false)
+    decoder_(binaryDecoder()), objectCount_(0), eof_(false),
+    block_offset_(0)
 {
     readHeader();
 }
@@ -193,10 +194,20 @@ std::ostream& operator << (std::ostream& os, const DataFileSync& s)
     return os;
 }
 
+namespace {
+  bool sync_match(const uint8_t *a, const DataFileSync &b) {
+      for (int i=0; i < 16; ++i) {
+        if (a[i] != b[i]) {
+          return false;
+        }
+      }
+      return true;
+  }
+}
 
 bool DataFileReaderBase::hasMore()
 {
-     if (eof_) {
+    if (eof_) {
         return false;
     } else if (objectCount_ != 0) {
         return true;
@@ -204,8 +215,23 @@ bool DataFileReaderBase::hasMore()
 
     dataDecoder_->init(*dataStream_);
     drain(*dataStream_);
+
     DataFileSync s;
     decoder_->init(*stream_);
+
+    block_offset_ = stream_->byteCount();
+
+    if (0) {
+      // test
+      const uint8_t* p = 0;
+      size_t n = 0;
+      stream_->next(&p, &n);
+      if (!sync_match(p, sync_)) {
+        std::cerr << "Huh, not a sync?" << std::endl;
+      }
+      stream_->backup(n);
+    }
+
     avro::decode(*decoder_, s);
     if (s != sync_) {
         throw Exception("Sync mismatch");
@@ -246,6 +272,10 @@ class BoundedInputStream : public InputStream {
         return in_.byteCount();
     }
 
+    int64_t remainingBytes() const {
+      return limit_ - in_.byteCount();
+    }
+
 public:
     BoundedInputStream(InputStream& in, size_t limit) :
         in_(in), limit_(limit) { }
@@ -274,8 +304,82 @@ bool DataFileReaderBase::readDataBlock()
     auto_ptr<InputStream> st = boundedInputStream(*stream_, static_cast<size_t>(byteCount));
     dataDecoder_->init(*st);
     dataStream_ = st;
+
     return true;
 }
+
+int64_t DataFileReaderBase::sizeBytes() const {
+  int64_t rem= stream_->remainingBytes();
+  if (rem == -1) return -1;
+  else {
+    // force decoder to empty its buffer
+    decoder_->init(*stream_);
+    return rem + stream_->byteCount();
+  }
+}
+
+int64_t DataFileReaderBase::blockOffsetBytes() const {
+  return block_offset_;
+}
+
+namespace {
+  const uint8_t* find_sync_candidate(const uint8_t* begin,
+                                     const uint8_t* end,
+                                     const DataFileSync &sync) {
+    return std::find(begin, end, sync[0]);
+  }
+}
+
+void DataFileReaderBase::seekBlockBytes(size_t offset) {
+  // force decoder to dump its buffers
+  decoder_->init(*stream_);
+
+  if (offset == block_offset_) {
+    return;
+
+  } else if (offset >= stream_->byteCount()) {
+    dataDecoder_->init(*dataStream_);
+    drain(*dataStream_);
+
+    stream_->skip(offset - stream_->byteCount());
+    objectCount_=0;
+    while (true) {
+      int current_count= stream_->byteCount();
+      const uint8_t* p = 0;
+      size_t n = 0;
+      if (! stream_->next(&p, &n)) {
+        eof_ = true;
+        return;
+      }
+      const uint8_t *pos= find_sync_candidate(p, p+n, sync_);
+      // it isn't obvious that we can count on streams to give us a reasonable
+      // amount of data, if they don't, dealing with it could be annoying.
+      if (n < 16) {
+        throw Exception("Out of data looking for sync");
+      }
+      if (pos == p + n) {
+        continue;
+      }
+      if (pos != p) {
+        stream_->backup(p+n-pos);
+        continue;
+      }
+
+      if (!sync_match(p, sync_)) {
+        // advance one byte
+        stream_->backup(n-1);
+      } else {
+        // we found it
+        stream_->backup(n);
+        hasMore();
+        break;
+      }
+    }
+  } else {
+    throw Exception("Cannot seek backwards in streams. This might be made to work in some cases.");
+  }
+}
+
 
 void DataFileReaderBase::close()
 {
@@ -321,6 +425,10 @@ void DataFileReaderBase::readHeader()
     if (it != metadata_.end() && toString(it->second) != AVRO_NULL_CODEC) {
         throw Exception("Unknown codec in data file: " + toString(it->second));
     }
+
+    // force the decoder to empty its buffer
+    decoder_->init(*stream_);
+    block_offset_ = stream_->byteCount();
 
     avro::decode(*decoder_, sync_);
 }

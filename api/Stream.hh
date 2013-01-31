@@ -73,6 +73,13 @@ public:
      * to be used unless, retutned back using backup.
      */
     virtual size_t byteCount() const = 0;
+
+     /**
+     * Returns the number of bytes remaining in the stream or -1 if
+     * that is not available.
+     */
+    virtual int64_t remainingBytes() const = 0;
+
 };
 
 /**
@@ -304,7 +311,7 @@ struct StreamWriter {
      * The next location to write to.
      */
     uint8_t* next_;
-    
+
     /**
      * One past the last location one can write to.
      */
@@ -406,5 +413,3 @@ inline void copy(InputStream& in, OutputStream& out)
 
 }   // namespace avro
 #endif
-
-
