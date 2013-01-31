@@ -194,17 +194,6 @@ std::ostream& operator << (std::ostream& os, const DataFileSync& s)
     return os;
 }
 
-namespace {
-  bool sync_match(const uint8_t *a, const DataFileSync &b) {
-      for (int i=0; i < 16; ++i) {
-        if (a[i] != b[i]) {
-          return false;
-        }
-      }
-      return true;
-  }
-}
-
 bool DataFileReaderBase::hasMore()
 {
     if (eof_) {
@@ -220,17 +209,6 @@ bool DataFileReaderBase::hasMore()
     decoder_->init(*stream_);
 
     block_offset_ = stream_->byteCount();
-
-    if (0) {
-      // test
-      const uint8_t* p = 0;
-      size_t n = 0;
-      stream_->next(&p, &n);
-      if (!sync_match(p, sync_)) {
-        std::cerr << "Huh, not a sync?" << std::endl;
-      }
-      stream_->backup(n);
-    }
 
     avro::decode(*decoder_, s);
     if (s != sync_) {
@@ -323,10 +301,15 @@ int64_t DataFileReaderBase::blockOffsetBytes() const {
 }
 
 namespace {
-  const uint8_t* find_sync_candidate(const uint8_t* begin,
-                                     const uint8_t* end,
-                                     const DataFileSync &sync) {
-    return std::find(begin, end, sync[0]);
+  bool sync_match(const uint8_t *begin, const uint8_t *end,
+                  const DataFileSync &b) {
+      for (int i=0; i < 16; ++i) {
+        if (begin+i == end) return true;
+        if (begin[i] != b[i]) {
+          return false;
+        }
+      }
+      return true;
   }
 }
 
@@ -351,7 +334,7 @@ void DataFileReaderBase::seekBlockBytes(size_t offset) {
         eof_ = true;
         return;
       }
-      const uint8_t *pos= find_sync_candidate(p, p+n, sync_);
+      const uint8_t *pos= std::find(p, p+n, sync_[0]);
       // it isn't obvious that we can count on streams to give us a reasonable
       // amount of data, if they don't, dealing with it could be annoying.
       if (n < 16) {
@@ -365,13 +348,14 @@ void DataFileReaderBase::seekBlockBytes(size_t offset) {
         continue;
       }
 
-      if (!sync_match(p, sync_)) {
+      if (!sync_match(p, p+n, sync_)) {
         // advance one byte
         stream_->backup(n-1);
       } else {
         // we found it
-        stream_->backup(n);
-        hasMore();
+        stream_->backup(n-16);
+        block_offset_= stream_->byteCount() - 16;
+        readDataBlock();
         break;
       }
     }
