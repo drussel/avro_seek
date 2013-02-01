@@ -371,19 +371,22 @@ public:
      * Test various seek operations.
      */
     void testSeeks() {
-      const int padding_size=10000;
-      const int padding_value=0;
-      const int number_of_objects=1000;
+      const size_t padding_size=10000;
+      const size_t number_of_objects=1000;
       // first create a large file
       ValidSchema dschema= avro::compileJsonSchemaFromString(prsch);
       {
         auto_ptr<avro::DataFileWriter<PaddedRecord> >
           writer(new avro::DataFileWriter<PaddedRecord>(filename, dschema));
 
-        for (unsigned int i=0; i< number_of_objects; ++i) {
+        for (size_t i=0; i< number_of_objects; ++i) {
           PaddedRecord d;
           d.index=i;
-          d.padding.resize(padding_size, padding_value);
+          d.padding.resize(padding_size);
+          for (size_t j=0; j < padding_size; ++j) {
+            // make sure all bytes appear
+            d.padding[j] = j%256;
+          }
           writer->write(d);
         }
       }
@@ -403,7 +406,8 @@ public:
         BOOST_CHECK(!reader->read(d));
       }
 
-      // check coverage
+      // check that all members are found
+      std::set<size_t> block_offsets;
       {
         std::vector<int> dividers;
         {
@@ -413,7 +417,6 @@ public:
           dividers.push_back(reader->blockOffsetBytes());
           int chunk_size = (size-dividers[0])/20;
           BOOST_REQUIRE_GT(chunk_size, 0);
-          std::cout << "chunk_size is " << chunk_size << std::endl;
           for (int i=1; i< 20; ++i) {
             dividers.push_back(chunk_size *i+ dividers[0]);
           }
@@ -421,10 +424,11 @@ public:
           dividers.push_back(size);
         }
         std::vector<int> found;
-        for (unsigned int i=1; i< dividers.size(); ++i) {
+        for (size_t i=1; i< dividers.size(); ++i) {
           auto_ptr<avro::DataFileReader<PaddedRecord> >
             reader(new avro::DataFileReader<PaddedRecord>(filename));
           reader->seekBlockBytes(dividers[i-1]);
+          block_offsets.insert(reader->blockOffsetBytes());
           BOOST_REQUIRE_GE(reader->blockOffsetBytes(), dividers[i-1]);
           do {
             PaddedRecord d;
@@ -436,6 +440,17 @@ public:
         BOOST_CHECK_EQUAL(found.size(), 1000);
         for (unsigned int i=0; i< found.size(); ++i) {
           BOOST_CHECK_EQUAL(found[i], i);
+        }
+      }
+
+      // check that all the block offsets are stable
+      {
+        for (std::set<size_t>::const_iterator it= block_offsets.begin();
+             it != block_offsets.end(); ++it) {
+          auto_ptr<avro::DataFileReader<PaddedRecord> >
+            reader(new avro::DataFileReader<PaddedRecord>(filename));
+          reader->seekBlockBytes(*it);
+          BOOST_CHECK_EQUAL(reader->blockOffsetBytes(), *it);
         }
       }
     }

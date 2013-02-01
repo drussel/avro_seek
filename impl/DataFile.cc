@@ -362,7 +362,7 @@ void DataFileReaderBase::seekBlockBytes(size_t offset) {
       if (!sync_match(p+1, p+n, sync_, 1)) {
         ++offset;
         --n;
-        --p;
+        ++p;
         continue;
       }
       if (n >= 16) {
@@ -373,6 +373,7 @@ void DataFileReaderBase::seekBlockBytes(size_t offset) {
         break;
       }
 
+      // below is not tested
       std::copy(p, p+n, old_data.begin());
 
       const uint8_t *next_p = 0;
@@ -384,14 +385,13 @@ void DataFileReaderBase::seekBlockBytes(size_t offset) {
       }
 
       if (!sync_match(next_p, next_p+next_n, sync_, n)) {
-        // advance
         stream_->backup(next_n);
         ++offset;
         --n;
-        --p;
+        ++p;
         continue;
       }
-      // we found it
+
       stream_->backup(next_n-16+n);
       block_offset_= offset;
       readDataBlock();
