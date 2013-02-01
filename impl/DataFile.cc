@@ -152,7 +152,7 @@ void DataFileWriterBase::setMetadata(const string& key, const string& value)
 DataFileReaderBase::DataFileReaderBase(const char* filename) :
     filename_(filename), stream_(fileInputStream(filename)),
     decoder_(binaryDecoder()), objectCount_(0), eof_(false),
-    block_offset_(0)
+    blockOffset_(0)
 {
     readHeader();
 }
@@ -208,7 +208,7 @@ bool DataFileReaderBase::hasMore()
     DataFileSync s;
     decoder_->init(*stream_);
 
-    block_offset_ = stream_->byteCount();
+    blockOffset_ = stream_->byteCount();
 
     avro::decode(*decoder_, s);
     if (s != sync_) {
@@ -296,16 +296,12 @@ int64_t DataFileReaderBase::sizeBytes() const {
   }
 }
 
-int64_t DataFileReaderBase::blockOffsetBytes() const {
-  return block_offset_;
-}
-
 namespace {
   bool sync_match(const uint8_t *begin, const uint8_t *end,
                   const DataFileSync &b, int sync_skip) {
-      for (int i=0; i < 16-sync_skip; ++i) {
-        if (begin+i == end) return true;
-        if (begin[i] != b[i+sync_skip]) {
+      for (const uint8_t *c = begin; c < begin + 16 - sync_skip; ++c) {
+        if (c == end) return true;
+        if (*c != b[c - begin + sync_skip]) {
           return false;
         }
       }
@@ -317,7 +313,7 @@ void DataFileReaderBase::seekBlockBytes(size_t offset) {
   // force decoder to dump its buffers
   decoder_->init(*stream_);
 
-  if (offset == block_offset_) {
+  if (offset == blockOffset_) {
     return;
 
   } else if (offset >= stream_->byteCount()) {
@@ -325,7 +321,7 @@ void DataFileReaderBase::seekBlockBytes(size_t offset) {
     drain(*dataStream_);
 
     stream_->skip(offset - stream_->byteCount());
-    objectCount_=0;
+    objectCount_ = 0;
 
     // if we have leftover data from a previous iteration
     boost::array<uint8_t, 16> old_data;
@@ -337,13 +333,13 @@ void DataFileReaderBase::seekBlockBytes(size_t offset) {
     while (true) {
       if (n == 0) {
         if (! stream_->next(&p, &n)) {
-          block_offset_= offset;
+          blockOffset_= offset;
           eof_ = true;
           return;
         }
       }
 
-      const uint8_t *pos= std::find(p, p+n, sync_[0]);
+      const uint8_t *pos= std::find(p, p + n, sync_[0]);
 
       if (pos == p + n) {
         // clear out all data
@@ -359,7 +355,7 @@ void DataFileReaderBase::seekBlockBytes(size_t offset) {
       p += delta;
 
       // the first already matches
-      if (!sync_match(p+1, p+n, sync_, 1)) {
+      if (!sync_match(p + 1, p + n, sync_, 1)) {
         ++offset;
         --n;
         ++p;
@@ -367,24 +363,24 @@ void DataFileReaderBase::seekBlockBytes(size_t offset) {
       }
       if (n >= 16) {
         // we found it
-        stream_->backup(n-16);
-        block_offset_= offset;
+        stream_->backup(n - 16);
+        blockOffset_= offset;
         readDataBlock();
         break;
       }
 
       // below is not tested
-      std::copy(p, p+n, old_data.begin());
+      std::copy(p, p + n, old_data.begin());
 
       const uint8_t *next_p = 0;
       size_t next_n = 0;
       if (! stream_->next(&next_p, &next_n)) {
-        block_offset_= offset+16; // safetly off the end
+        blockOffset_= offset + 16; // safetly off the end
         eof_ = true;
         return;
       }
 
-      if (!sync_match(next_p, next_p+next_n, sync_, n)) {
+      if (!sync_match(next_p, next_p + next_n, sync_, n)) {
         stream_->backup(next_n);
         ++offset;
         --n;
@@ -393,7 +389,7 @@ void DataFileReaderBase::seekBlockBytes(size_t offset) {
       }
 
       stream_->backup(next_n-16+n);
-      block_offset_= offset;
+      blockOffset_= offset;
       readDataBlock();
       break;
     }
@@ -450,7 +446,7 @@ void DataFileReaderBase::readHeader()
 
     // force the decoder to empty its buffer
     decoder_->init(*stream_);
-    block_offset_ = stream_->byteCount();
+    blockOffset_ = stream_->byteCount();
 
     avro::decode(*decoder_, sync_);
 }

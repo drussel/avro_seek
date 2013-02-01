@@ -162,7 +162,7 @@ class AVRO_DECL DataFileReaderBase : boost::noncopyable {
     const DecoderPtr decoder_;
     int64_t objectCount_;
     bool eof_;
-    int64_t block_offset_;
+    int64_t blockOffset_;
 
     ValidSchema readerSchema_;
     ValidSchema dataSchema_;
@@ -234,7 +234,7 @@ public:
     /**
      * Returns the offset of the start of the current block in the file in bytes.
      */
-    int64_t blockOffsetBytes() const;
+    int64_t blockOffsetBytes() const { return blockOffset_; }
 
     /**
      * Seeks to the next sync mark after the provided number of bytes.
@@ -329,18 +329,18 @@ public:
      * Returns the size of the input in bytes, or -1 if the size cannot be
      * determined.
      */
-    int64_t sizeBytes() const {return base_->sizeBytes();}
+    int64_t sizeBytes() const { return base_->sizeBytes(); }
 
     /**
      * Returns the offset of the start of the current block in the file in bytes.
      */
-    int64_t blockOffsetBytes() const {return base_->blockOffsetBytes();}
+    int64_t blockOffsetBytes() const { return base_->blockOffsetBytes(); }
 
     /**
      * Seeks to the next block mark after the provided number of bytes.
      * Offset is from the start of the file.
      */
-    void seekBlockBytes(size_t offset) {return base_->seekBlockBytes(offset);}
+    void seekBlockBytes(size_t offset) { return base_->seekBlockBytes(offset); }
 
 
     /**
