@@ -302,10 +302,10 @@ int64_t DataFileReaderBase::blockOffsetBytes() const {
 
 namespace {
   bool sync_match(const uint8_t *begin, const uint8_t *end,
-                  const DataFileSync &b) {
-      for (int i=0; i < 16; ++i) {
+                  const DataFileSync &b, int sync_skip) {
+      for (int i=0; i < 16-sync_skip; ++i) {
         if (begin+i == end) return true;
-        if (begin[i] != b[i]) {
+        if (begin[i] != b[i+sync_skip]) {
           return false;
         }
       }
@@ -326,38 +326,76 @@ void DataFileReaderBase::seekBlockBytes(size_t offset) {
 
     stream_->skip(offset - stream_->byteCount());
     objectCount_=0;
+
+    // if we have leftover data from a previous iteration
+    boost::array<uint8_t, 16> old_data;
+    const uint8_t *p = 0;
+    size_t n = 0;
+
+    int offset = stream_->byteCount();
+
     while (true) {
-      int current_count= stream_->byteCount();
-      const uint8_t* p = 0;
-      size_t n = 0;
-      if (! stream_->next(&p, &n)) {
-        eof_ = true;
-        return;
-      }
-      const uint8_t *pos= std::find(p, p+n, sync_[0]);
-      // it isn't obvious that we can count on streams to give us a reasonable
-      // amount of data, if they don't, dealing with it could be annoying.
-      if (n < 16) {
-        throw Exception("Out of data looking for sync");
-      }
-      if (pos == p + n) {
-        continue;
-      }
-      if (pos != p) {
-        stream_->backup(p+n-pos);
-        continue;
+      if (n == 0) {
+        if (! stream_->next(&p, &n)) {
+          block_offset_= offset;
+          eof_ = true;
+          return;
+        }
       }
 
-      if (!sync_match(p, p+n, sync_)) {
-        // advance one byte
-        stream_->backup(n-1);
-      } else {
+      const uint8_t *pos= std::find(p, p+n, sync_[0]);
+
+      if (pos == p + n) {
+        // clear out all data
+        offset += n;
+        p = 0;
+        n = 0;
+        continue;
+      }
+      // advance
+      int delta= pos - p;
+      offset += delta;
+      n -= delta;
+      p += delta;
+
+      // the first already matches
+      if (!sync_match(p+1, p+n, sync_, 1)) {
+        ++offset;
+        --n;
+        --p;
+        continue;
+      }
+      if (n >= 16) {
         // we found it
         stream_->backup(n-16);
-        block_offset_= stream_->byteCount() - 16;
+        block_offset_= offset;
         readDataBlock();
         break;
       }
+
+      std::copy(p, p+n, old_data.begin());
+
+      const uint8_t *next_p = 0;
+      size_t next_n = 0;
+      if (! stream_->next(&next_p, &next_n)) {
+        block_offset_= offset+16; // safetly off the end
+        eof_ = true;
+        return;
+      }
+
+      if (!sync_match(next_p, next_p+next_n, sync_, n)) {
+        // advance
+        stream_->backup(next_n);
+        ++offset;
+        --n;
+        --p;
+        continue;
+      }
+      // we found it
+      stream_->backup(next_n-16+n);
+      block_offset_= offset;
+      readDataBlock();
+      break;
     }
   } else {
     throw Exception("Cannot seek backwards in streams. This might be made to work in some cases.");
