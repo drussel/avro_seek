@@ -240,7 +240,7 @@ public:
      * Seeks to the next sync mark after the provided number of bytes.
      * Offset is from the start of the file.
      */
-    void seekBlockBytes(size_t offset);
+    void seekBlockBytes(int64_t offset);
 
     /**
      * Closes the reader. No further operation is possible on this reader.

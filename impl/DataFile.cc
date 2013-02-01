@@ -309,7 +309,7 @@ namespace {
   }
 }
 
-void DataFileReaderBase::seekBlockBytes(size_t offset) {
+void DataFileReaderBase::seekBlockBytes(int64_t offset) {
   // force decoder to dump its buffers
   decoder_->init(*stream_);
 
@@ -328,7 +328,7 @@ void DataFileReaderBase::seekBlockBytes(size_t offset) {
     const uint8_t *p = 0;
     size_t n = 0;
 
-    int offset = stream_->byteCount();
+    size_t offset = stream_->byteCount();
 
     while (true) {
       if (n == 0) {
@@ -349,7 +349,7 @@ void DataFileReaderBase::seekBlockBytes(size_t offset) {
         continue;
       }
       // advance
-      int delta= pos - p;
+      int64_t delta= pos - p;
       offset += delta;
       n -= delta;
       p += delta;
