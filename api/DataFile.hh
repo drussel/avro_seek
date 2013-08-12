@@ -198,7 +198,9 @@ public:
      * This function should be called exactly once after constructing
      * the DataFileReaderBase object.
      */
-    DataFileReaderBase(const char* filename);
+    DataFileReaderBase(const char* filename,
+                       // for testing
+                       size_t buffer_size = 8 * 1024);
 
     /**
      * Initializes the reader so that the reader and writer schemas
@@ -268,8 +270,9 @@ public:
      * Constructs the reader for the given file and the reader is
      * expected to use the schema that is used with data.
      */
-    DataFileReader(const char* filename) :
-        base_(new DataFileReaderBase(filename)) {
+  DataFileReader(const char* filename,
+                 size_t buffer_size = 8 * 1024) :
+    base_(new DataFileReaderBase(filename, buffer_size)) {
         base_->init();
     }
 
@@ -341,7 +344,6 @@ public:
      * Offset is from the start of the file.
      */
     void seekBlockBytes(size_t offset) { return base_->seekBlockBytes(offset); }
-
 
     /**
      * Closes the reader. No further operation is possible on this reader.

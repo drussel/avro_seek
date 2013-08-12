@@ -149,10 +149,11 @@ void DataFileWriterBase::setMetadata(const string& key, const string& value)
     metadata_[key] = v;
 }
 
-DataFileReaderBase::DataFileReaderBase(const char* filename) :
-    filename_(filename), stream_(fileInputStream(filename)),
-    decoder_(binaryDecoder()), objectCount_(0), eof_(false),
-    blockOffset_(0)
+DataFileReaderBase::DataFileReaderBase(const char* filename,
+                                          size_t buffer_size) :
+     filename_(filename), stream_(fileInputStream(filename, buffer_size)),
+     decoder_(binaryDecoder()), objectCount_(0), eof_(false),
+     blockOffset_(0)
 {
     readHeader();
 }
@@ -266,6 +267,7 @@ auto_ptr<InputStream> boundedInputStream(InputStream& in, size_t limit)
 
 bool DataFileReaderBase::readDataBlock()
 {
+    if (eof_) return false;
     decoder_->init(*stream_);
     const uint8_t* p = 0;
     size_t n = 0;
@@ -369,7 +371,6 @@ void DataFileReaderBase::seekBlockBytes(int64_t offset) {
         break;
       }
 
-      // below is not tested
       std::copy(p, p + n, old_data.begin());
 
       const uint8_t *next_p = 0;

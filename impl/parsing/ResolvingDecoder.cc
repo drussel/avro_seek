@@ -60,6 +60,7 @@ using std::make_pair;
 typedef pair<NodePtr, NodePtr> NodePair;
 
 class ResolvingGrammarGenerator : public ValidatingGrammarGenerator {
+    using ValidatingGrammarGenerator::doGenerate;
     Production doGenerate(const NodePtr& writer, const NodePtr& reader,
         map<NodePair, shared_ptr<Production> > &m,
         const map<NodePtr, shared_ptr<Production> > &m2);
